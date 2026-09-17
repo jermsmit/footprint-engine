@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Footprint Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e13;
+    --bg-raised: #10151c;
+    --surface: #141b23;
+    --border: #232e3a;
+    --border-soft: #1a232c;
+    --text: #dde5ec;
+    --text-dim: #8493a3;
+    --text-faint: #52616f;
+    --accent: #d98e3c;
+    --accent-dim: #7a5726;
+    --found: #3fb98a;
+    --found-dim: #1c3d33;
+    --missing: #3a4552;
+    --error: #d9646e;
+    --skip: #6b7a8c;
+    --sans: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  .shell { max-width: 920px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  header.top {
+    display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 40px;
+  }
+  .wordmark { font-family: var(--mono); font-size: 15px; font-weight: 500; letter-spacing: 0.02em; color: var(--text); }
+  .wordmark span { color: var(--accent); }
+  .status-pill {
+    font-family: var(--mono); font-size: 12px; color: var(--text-faint);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .status-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--found); box-shadow: 0 0 6px var(--found);
+  }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border-soft); }
+  .tab {
+    font-family: var(--mono); font-size: 13px; color: var(--text-faint);
+    background: none; border: none; padding: 10px 14px; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text-dim); }
+
+  .hero { margin-bottom: 44px; }
+  .hero h1 { font-size: 28px; line-height: 1.25; font-weight: 600; margin: 0 0 10px; max-width: 40ch; }
+  .hero p { color: var(--text-dim); font-size: 15px; line-height: 1.6; max-width: 58ch; margin: 0 0 28px; }
+
+  .search-box {
+    display: flex; align-items: center; background: var(--bg-raised);
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px 4px 4px 16px;
+    transition: border-color 0.15s ease;
+  }
+  .search-box:focus-within { border-color: var(--accent-dim); }
+  .search-box .prompt { font-family: var(--mono); color: var(--accent); font-size: 15px; margin-right: 10px; user-select: none; }
+  .search-box input {
+    flex: 1; background: transparent; border: none; outline: none; color: var(--text);
+    font-family: var(--mono); font-size: 15px; padding: 12px 0;
+  }
+  .search-box input::placeholder { color: var(--text-faint); }
+  .search-box button {
+    background: var(--accent); color: #1a1206; border: none; font-family: var(--sans);
+    font-weight: 600; font-size: 14px; padding: 10px 18px; border-radius: 3px; cursor: pointer;
+    transition: background 0.15s ease; white-space: nowrap;
+  }
+  .search-box button:hover { background: #eba452; }
+  .search-box button:disabled { background: var(--border); color: var(--text-faint); cursor: not-allowed; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .filters.hidden { display: none; }
+  .filter-chip {
+    font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: var(--surface);
+    border: 1px solid var(--border); padding: 5px 10px; border-radius: 3px; cursor: pointer; user-select: none;
+  }
+  .filter-chip.active { color: var(--accent); border-color: var(--accent-dim); background: rgba(217, 142, 60, 0.08); }
+
+  .summary-bar {
+    display: none; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border);
+    border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 28px;
+  }
+  .summary-bar.visible { display: grid; }
+  .summary-cell { background: var(--bg-raised); padding: 14px 16px; }
+  .summary-cell .num { font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1; }
+  .summary-cell .label { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+  .summary-cell.found .num { color: var(--found); }
+  .summary-cell.progress .num { color: var(--accent); }
+
+  .progress-track {
+    height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 28px; display: none;
+  }
+  .progress-track.visible { display: block; }
+  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.2s ease; }
+
+  .results-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .results-head h2 { font-size: 13px; font-weight: 600; color: var(--text-dim); margin: 0; }
+
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border-soft); border-left: 2px solid var(--found);
+    border-radius: 3px; padding: 12px 14px; animation: rise 0.25s ease both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .result-card .row1 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .result-card .row1-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .result-card .og-avatar {
+    width: 20px; height: 20px; border-radius: 3px; object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border-soft); background: var(--bg-raised);
+  }
+  .result-card .site-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-card .cat { font-family: var(--mono); font-size: 10px; color: var(--text-faint); text-transform: lowercase; flex-shrink: 0; }
+  .result-card .url {
+    display: block; font-family: var(--mono); font-size: 11px; color: var(--found); margin-top: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none;
+  }
+  .result-card a.url:hover { text-decoration: underline; }
+  .result-card .detail-list { margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--text-dim); line-height: 1.7; }
+  .result-card .detail-list b { color: var(--text); font-weight: 500; }
+  .result-card .og-title { font-family: var(--sans); font-size: 12px; color: var(--text); font-weight: 600; line-height: 1.4; }
+  .result-card .og-description { font-family: var(--sans); font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-top: 2px; }
+
+  .no-hits-yet { color: var(--text-faint); font-family: var(--mono); font-size: 13px; padding: 20px 0; }
+
+  .other-section { margin-top: 20px; }
+  .other-toggle {
+    font-family: var(--mono); font-size: 12px; color: var(--text-faint); background: var(--bg-raised);
+    border: 1px solid var(--border-soft); padding: 8px 14px; border-radius: 4px; cursor: pointer; width: 100%;
+    text-align: left; display: flex; justify-content: space-between; align-items: center;
+  }
+  .other-toggle:hover { color: var(--text-dim); }
+  .other-table { display: none; margin-top: 8px; border: 1px solid var(--border-soft); border-radius: 4px; overflow: hidden; }
+  .other-table.expanded { display: block; }
+  .other-table table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  .other-table th {
+    text-align: left; padding: 8px 12px; color: var(--text-faint); font-weight: 500; background: var(--bg-raised);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .other-table td { padding: 6px 12px; color: var(--text-dim); border-bottom: 1px solid var(--border-soft); }
+  .other-table tr:last-child td { border-bottom: none; }
+  .other-table .status-not_found { color: var(--text-faint); }
+  .other-table .status-error { color: var(--error); }
+  .other-table .status-skipped { color: var(--skip); }
+  .other-table .status-unknown { color: var(--text-faint); }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-faint); font-family: var(--mono); font-size: 13px; }
+
+  .pivot-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-soft); }
+  .pivot-heading { font-size: 13px; font-weight: 600; color: var(--text-dim); margin: 0 0 4px; }
+  .pivot-sub { font-size: 12px; color: var(--text-faint); margin: 0 0 12px; }
+  .pivot-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pivot-link {
+    font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: var(--surface);
+    border: 1px solid var(--border-soft); padding: 7px 12px; border-radius: 4px; text-decoration: none;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .pivot-link:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+  footer.note {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border-soft);
+    font-size: 12px; color: var(--text-faint); line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="top">
+    <div class="wordmark">footprint<span>::</span>engine</div>
+    <div class="status-pill" id="statusPill"><span class="dot"></span>ready</div>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-type="username">username</button>
+    <button class="tab" data-type="email">email</button>
+    <button class="tab" data-type="phone">phone</button>
+    <button class="tab" data-type="ip">ip address</button>
+    <button class="tab" data-type="domain">domain</button>
+    <button class="tab" data-type="password">password</button>
+  </div>
+
+  <div class="hero">
+    <h1 id="heroTitle">See where a handle shows up.</h1>
+    <p id="heroSub">Checks a username against several hundred public platforms at once and reports back live as each one resolves.</p>
+
+    <div class="search-box">
+      <span class="prompt">&gt;</span>
+      <input type="text" id="indicatorInput" placeholder="enter a username" autocomplete="off" spellcheck="false">
+      <button id="scanBtn">Trace</button>
+    </div>
+
+    <div class="filters" id="categoryFilters"></div>
+  </div>
+
+  <div class="progress-track" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
+
+  <div class="summary-bar" id="summaryBar">
+    <div class="summary-cell found"><div class="num" id="statFound">0</div><div class="label">found</div></div>
+    <div class="summary-cell progress"><div class="num" id="statChecked">0</div><div class="label">checked</div></div>
+    <div class="summary-cell"><div class="num" id="statTotal">0</div><div class="label">total sources</div></div>
+    <div class="summary-cell"><div class="num" id="statOther">0</div><div class="label">no match / n-a</div></div>
+  </div>
+
+  <div class="results-head" id="resultsHead" style="display:none;">
+    <h2>Results</h2>
+  </div>
+
+  <div class="results-grid" id="resultsGrid"></div>
+  <div class="no-hits-yet" id="noHitsYet" style="display:none;">No matches yet — still scanning…</div>
+
+  <div class="other-section" id="otherSection" style="display:none;">
+    <button class="other-toggle" id="otherToggle">
+      <span id="otherToggleLabel">0 sources checked, no match — view list</span>
+      <span id="otherToggleArrow">+</span>
+    </button>
+    <div class="other-table" id="otherTable">
+      <table>
+        <thead><tr><th>Source</th><th>Category</th><th>Status</th><th>Note</th></tr></thead>
+        <tbody id="otherTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pivot-section" id="pivotSection" style="display:none;">
+    <h2 class="pivot-heading">Pivot to manual search</h2>
+    <p class="pivot-sub">Not automated checks — these just open a search engine query for you to read yourself.</p>
+    <div class="pivot-list" id="pivotList"></div>
+  </div>
+
+  <div class="empty-state" id="emptyState">No scan running. Enter a value above to start.</div>
+
+  <footer class="note" id="footerNote">
+    Self-hosted lookup tool. Only checks whether public profile pages, records, or metadata exist — no authentication, scraping of private content, or bypassing of access controls.
+  </footer>
+
+</div>
+
+<script>
+const el = (id) => document.getElementById(id);
+const indicatorInput = el('indicatorInput');
+const scanBtn = el('scanBtn');
+const resultsGrid = el('resultsGrid');
+const noHitsYet = el('noHitsYet');
+const emptyState = el('emptyState');
+const resultsHead = el('resultsHead');
+const summaryBar = el('summaryBar');
+const progressTrack = el('progressTrack');
+const progressFill = el('progressFill');
+const statFound = el('statFound');
+const statChecked = el('statChecked');
+const statTotal = el('statTotal');
+const statOther = el('statOther');
+const statusPill = el('statusPill');
+const categoryFilters = el('categoryFilters');
+const heroTitle = el('heroTitle');
+const heroSub = el('heroSub');
+const otherSection = el('otherSection');
+const otherToggle = el('otherToggle');
+const otherToggleLabel = el('otherToggleLabel');
+const otherToggleArrow = el('otherToggleArrow');
+const otherTable = el('otherTable');
+const otherTableBody = el('otherTableBody');
+const pivotSection = el('pivotSection');
+const pivotList = el('pivotList');
+
+const TYPE_CONFIG = {
+  username: {
+    title: 'See where a handle shows up.',
+    sub: 'Checks a username against several hundred public platforms at once and reports back live as each one resolves. Nothing here reads private data — just whether a public profile page exists.',
+    placeholder: 'enter a username',
+    showCategoryFilters: true,
+    inputType: 'text',
+    buttonLabel: 'Trace',
+  },
+  email: {
+    title: 'Find the accounts behind an address.',
+    sub: 'Checks MX validity, Gravatar, ~120 account-existence checks (via holehe), and optional EmailRep reputation / HIBP breach data if you have configured free API keys.',
+    placeholder: 'enter an email address',
+    showCategoryFilters: false,
+    inputType: 'text',
+    buttonLabel: 'Look up',
+  },
+  phone: {
+    title: 'Read a number\u2019s metadata.',
+    sub: 'Parses the number locally for region, carrier, and line type. No network call, no key, no rate limit \u2014 and no claim to who owns it.',
+    placeholder: 'enter a phone number, e.g. +1 555 123 4567',
+    showCategoryFilters: false,
+    inputType: 'text',
+    buttonLabel: 'Look up',
+  },
+  ip: {
+    title: 'Trace an IP address.',
+    sub: 'Geolocation, ASN, hosting provider, RDAP registration data, and reverse DNS \u2014 all from free public sources.',
+    placeholder: 'enter an IPv4 or IPv6 address',
+    showCategoryFilters: false,
+    inputType: 'text',
+    buttonLabel: 'Look up',
+  },
+  domain: {
+    title: 'Map a domain\u2019s footprint.',
+    sub: 'RDAP registration data, subdomains discovered via Certificate Transparency logs, and the live TLS certificate \u2014 all free, all passive.',
+    placeholder: 'enter a domain, e.g. example.com',
+    showCategoryFilters: false,
+    inputType: 'text',
+    buttonLabel: 'Look up',
+  },
+  password: {
+    title: 'Check a password against known breaches.',
+    sub: 'Uses k-anonymity: only a 5-character hash prefix is ever sent, never the password itself. Nothing is stored \u2014 not here, not on the server.',
+    placeholder: 'enter a password to check',
+    showCategoryFilters: false,
+    inputType: 'password',
+    buttonLabel: 'Check',
+  },
+};
+
+let activeType = 'username';
+let selectedCategories = new Set();
+let currentEventSource = null;
+
+function switchTab(type) {
+  activeType = type;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
+  const cfg = TYPE_CONFIG[type];
+  heroTitle.textContent = cfg.title;
+  heroSub.textContent = cfg.sub;
+  indicatorInput.placeholder = cfg.placeholder;
+  indicatorInput.type = cfg.inputType;
+  indicatorInput.autocomplete = cfg.inputType === 'password' ? 'new-password' : 'off';
+  indicatorInput.value = '';
+  categoryFilters.classList.toggle('hidden', !cfg.showCategoryFilters);
+  resetUI();
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.type));
+});
+
+async function loadCategories() {
+  try {
+    const res = await fetch('/api/v1/username/categories');
+    const data = await res.json();
+    categoryFilters.innerHTML = '';
+    (data.categories || []).forEach(cat => {
+      const chip = document.createElement('div');
+      chip.className = 'filter-chip';
+      chip.textContent = cat;
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        if (selectedCategories.has(cat)) selectedCategories.delete(cat);
+        else selectedCategories.add(cat);
+      });
+      categoryFilters.appendChild(chip);
+    });
+  } catch (e) {
+    console.error('failed to load categories', e);
+  }
+}
+
+let counts = { found: 0, checked: 0, total: 0, other: 0 };
+let otherRows = [];
+let otherExpanded = false;
+
+function resetUI() {
+  if (currentEventSource) { currentEventSource.close(); currentEventSource = null; }
+  resultsGrid.innerHTML = '';
+  otherTableBody.innerHTML = '';
+  otherRows = [];
+  otherExpanded = false;
+  otherTable.classList.remove('expanded');
+  otherToggleArrow.textContent = '+';
+  otherSection.style.display = 'none';
+  pivotList.innerHTML = '';
+  pivotSection.style.display = 'none';
+  counts = { found: 0, checked: 0, total: 0, other: 0 };
+  statFound.textContent = '0';
+  statChecked.textContent = '0';
+  statTotal.textContent = '0';
+  statOther.textContent = '0';
+  progressFill.style.width = '0%';
+  progressTrack.classList.remove('visible');
+  summaryBar.classList.remove('visible');
+  resultsHead.style.display = 'none';
+  noHitsYet.style.display = 'none';
+  emptyState.style.display = 'block';
+  scanBtn.disabled = false;
+  scanBtn.textContent = TYPE_CONFIG[activeType].buttonLabel;
+  statusPill.innerHTML = '<span class="dot"></span>ready';
+}
+
+function formatDetails(details) {
+  if (!details) return '';
+  const lines = [];
+  for (const [key, val] of Object.entries(details)) {
+    if (val === null || val === undefined || val === '') continue;
+    if (key === 'image') continue; // rendered separately as a thumbnail
+    let display;
+    if (Array.isArray(val)) {
+      if (val.length === 0) continue;
+      display = val.slice(0, 4).join(', ') + (val.length > 4 ? ` +${val.length - 4} more` : '');
+    } else if (typeof val === 'object') {
+      continue;
+    } else {
+      display = String(val);
+    }
+    const label = key.replace(/_/g, ' ');
+    if (key === 'title' || key === 'description') {
+      lines.push(`<div class="og-${key}">${display}</div>`);
+    } else {
+      lines.push(`<div><b>${label}:</b> ${display}</div>`);
+    }
+  }
+  return lines.length ? `<div class="detail-list">${lines.join('')}</div>` : '';
+}
+
+function renderFoundCard(r) {
+  const card = document.createElement('div');
+  card.className = 'result-card';
+  const urlHtml = r.url && r.url.startsWith('http')
+    ? `<a class="url" href="${r.url}" target="_blank" rel="noopener noreferrer">${r.url}</a>`
+    : (r.url ? `<span class="url">${r.url}</span>` : '');
+  const avatarUrl = r.details && r.details.image;
+  const avatarHtml = avatarUrl
+    ? `<img class="og-avatar" src="${avatarUrl}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'">`
+    : '';
+  card.innerHTML = `
+    <div class="row1">
+      <div class="row1-left">
+        ${avatarHtml}
+        <span class="site-name">${r.source}</span>
+      </div>
+      <span class="cat">${r.category || ''}</span>
+    </div>
+    ${urlHtml}
+    ${formatDetails(r.details)}
+  `;
+  resultsGrid.prepend(card);
+}
+
+function renderOtherRow(r) {
+  otherRows.push(r);
+  const note = (r.details && (r.details.reason || r.details.http_status)) || '';
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td>${r.source}</td>
+    <td>${r.category || ''}</td>
+    <td class="status-${r.status}">${r.status.replace('_', ' ')}</td>
+    <td>${note}</td>
+  `;
+  otherTableBody.appendChild(row);
+  otherSection.style.display = 'block';
+  otherToggleLabel.textContent = `${otherRows.length} source${otherRows.length === 1 ? '' : 's'} checked, no match \u2014 ${otherExpanded ? 'hide' : 'view'} list`;
+}
+
+function renderPivotLink(r) {
+  const link = document.createElement('a');
+  link.className = 'pivot-link';
+  link.href = r.url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = r.source;
+  pivotList.appendChild(link);
+  pivotSection.style.display = 'block';
+}
+
+otherToggle.addEventListener('click', () => {
+  otherExpanded = !otherExpanded;
+  otherTable.classList.toggle('expanded', otherExpanded);
+  otherToggleArrow.textContent = otherExpanded ? '\u2212' : '+';
+  otherToggleLabel.textContent = `${otherRows.length} source${otherRows.length === 1 ? '' : 's'} checked, no match \u2014 ${otherExpanded ? 'hide' : 'view'} list`;
+});
+
+function renderResult(r) {
+  counts.checked += 1;
+  statChecked.textContent = counts.checked;
+  if (counts.total > 0) {
+    progressFill.style.width = Math.min(100, (counts.checked / counts.total) * 100) + '%';
+  }
+
+  if (r.status === 'info') {
+    // Reference/pivot links, not a verification result -- don't count
+    // toward found/no-match, just append to their own panel.
+    renderPivotLink(r);
+    return;
+  }
+
+  if (r.status === 'found') {
+    counts.found += 1;
+    statFound.textContent = counts.found;
+    noHitsYet.style.display = 'none';
+    renderFoundCard(r);
+  } else {
+    counts.other += 1;
+    statOther.textContent = counts.other;
+    renderOtherRow(r);
+    if (counts.found === 0) noHitsYet.style.display = 'block';
+  }
+}
+
+async function startScan() {
+  const indicator = indicatorInput.value;
+  if (!indicator.trim() && activeType !== 'password') return;
+  if (activeType === 'password' && !indicator) return;
+
+  const buttonLabel = TYPE_CONFIG[activeType].buttonLabel;
+
+  // For the password tab, clear the field the instant we've read its value —
+  // it should not linger visibly or in the DOM any longer than necessary.
+  if (activeType === 'password') indicatorInput.value = '';
+
+  resetUI();
+  emptyState.style.display = 'none';
+  resultsHead.style.display = 'flex';
+  noHitsYet.style.display = 'block';
+  summaryBar.classList.add('visible');
+  progressTrack.classList.add('visible');
+  scanBtn.disabled = true;
+  scanBtn.textContent = 'Scanning\u2026';
+  statusPill.innerHTML = '<span class="dot" style="background:#d98e3c;box-shadow:0 0 6px #d98e3c;"></span>scanning';
+
+  const body = { indicator, indicator_type: activeType };
+  if (activeType === 'username' && selectedCategories.size > 0) {
+    body.categories = Array.from(selectedCategories);
+  }
+
+  let data;
+  try {
+    const res = await fetch('/api/v1/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    data = await res.json();
+  } catch (e) {
+    statusPill.innerHTML = '<span class="dot" style="background:#d9646e;box-shadow:0 0 6px #d9646e;"></span>error';
+    scanBtn.disabled = false;
+    scanBtn.textContent = buttonLabel;
+    noHitsYet.textContent = `Could not start scan: ${e.message}`;
+    return;
+  }
+
+  counts.total = data.total_sources || 0;
+  statTotal.textContent = counts.total;
+
+  const evtSource = new EventSource(`/api/v1/stream/${data.scan_id}`);
+  currentEventSource = evtSource;
+  evtSource.onmessage = (e) => renderResult(JSON.parse(e.data));
+  evtSource.addEventListener('done', () => {
+    evtSource.close();
+    scanBtn.disabled = false;
+    scanBtn.textContent = buttonLabel;
+    statusPill.innerHTML = '<span class="dot"></span>done';
+    if (counts.found === 0) noHitsYet.textContent = 'Scan complete \u2014 no public matches found.';
+  });
+  evtSource.onerror = () => {
+    evtSource.close();
+    scanBtn.disabled = false;
+    scanBtn.textContent = buttonLabel;
+    statusPill.innerHTML = '<span class="dot" style="background:#d9646e;box-shadow:0 0 6px #d9646e;"></span>connection lost';
+  };
+}
+
+scanBtn.addEventListener('click', startScan);
+indicatorInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') startScan(); });
+
+loadCategories();
+switchTab('username');
+</script>
+</body>
+</html>
