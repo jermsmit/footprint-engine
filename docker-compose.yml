@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  footprint-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: footprint_engine
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist the SQLite database and dataset across container restarts/rebuilds.
+      - footprint_data:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  footprint_data:
